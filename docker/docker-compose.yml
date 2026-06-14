@@ -1,0 +1,33 @@
+services:
+  frontend:
+    build:
+      context: ../frontend          # build context = папка frontend/
+      dockerfile: ../docker/Dockerfile.frontend
+    ports:
+      - "3000:80"                   # хост:контейнер — сайт открывается на localhost:3000
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+  backend:
+    build:
+      context: ../backend           # build context = папка backend/
+      dockerfile: ../docker/Dockerfile.backend
+    ports:
+      - "8000:8000"                 # REST API бэкенда
+    networks:
+      - app-network
+
+  agents:
+    build:
+      context: ../agents            # build context = папка agents/
+      dockerfile: ../docker/Dockerfile.agents
+    ports:
+      - "8001:8001"                 # API ML-агентов
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
