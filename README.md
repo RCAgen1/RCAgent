@@ -79,8 +79,3 @@ flowchart TB
     class W frontend
 ```
 
-### Databae
-```mermaid
-
-```
-
