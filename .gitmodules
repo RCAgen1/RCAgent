@@ -1,0 +1,9 @@
+[submodule "backend"]
+	path = backend
+	url = https://github.com/RCAgen1/backend.git
+[submodule "agents"]
+	path = agents
+	url = https://github.com/RCAgen1/agents.git
+[submodule "frontend"]
+	path = frontend
+	url = https://github.com/RCAgen1/frontend.git
