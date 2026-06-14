@@ -50,7 +50,7 @@ flowchart TB
         B -->| Call on Incident| LA
     end
 
-    WO[World(Subscriptions,Sites...)]
+    WO["World (Subscriptions, Sites...)"]
     WO -->|Knowledge| S
     S -->|Filtered&Mapped Knowledge| KA
 
