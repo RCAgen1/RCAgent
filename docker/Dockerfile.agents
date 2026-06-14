@@ -1,0 +1,29 @@
+FROM python:3.11-slim
+WORKDIR /app
+
+# Копируем только зависимости — слой кешируется пока requirements.txt не изменится
+COPY requirements.txt .
+
+# Сначала ставим CPU-only torch (~700 MB вместо ~3 GB CUDA-версии),
+# затем остальные зависимости из requirements.txt
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Копируем исходники агентов
+COPY . .
+
+# Порт 8001 — HTTP API ML-агентов внутри контейнера.
+# Снаружи маппится в docker-compose: "8001:8001" → localhost:8001
+EXPOSE 8001
+
+# Volume для кеша моделей sentence-transformers (скачиваются при первом запуске ~400 MB).
+# Монтируй снаружи чтобы не скачивать каждый раз при пересоздании контейнера:
+#   docker run -v models_cache:/root/.cache/huggingface ...
+# или в docker-compose:
+#   volumes:
+#     - models_cache:/root/.cache/huggingface
+VOLUME ["/root/.cache/huggingface"]
+
+# Точка входа: запускает модуль api внутри пакета agents.
+# Замени на актуальный путь к entrypoint'у
+CMD ["python", "-m", "api"]

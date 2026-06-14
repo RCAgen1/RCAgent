@@ -1,0 +1,19 @@
+FROM python:3.11-slim
+WORKDIR /app
+
+# Копируем только зависимости — слой кешируется пока requirements.txt не изменится
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Копируем исходники приложения
+COPY . .
+
+# Порт 8000 — стандартный для FastAPI/uvicorn внутри контейнера.
+# Снаружи маппится в docker-compose: "8000:8000" → localhost:8000
+EXPOSE 8000
+
+# Если нужен volume для хранения данных (БД, файлы) — пример:
+# VOLUME ["/app/data"]
+
+# Точка входа: замени "main:app" на актуальный модуль и переменную FastAPI-приложения
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
