@@ -7,3 +7,6 @@
 [submodule "frontend"]
 	path = frontend
 	url = https://github.com/RCAgen1/frontend.git
+[submodule "linux_binary"]
+	path = linux_binary
+	url = https://github.com/RCAgen1/linux_binary.git
