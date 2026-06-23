@@ -13,7 +13,7 @@
 | **ML / AI Agents** | Python 3.11+, FastAPI, sentence-transformers (E5), numpy, FAISS, GLiNER, LLM API, feedparser, beautifulsoup4, SQLAlchemy, Alembic, PostgreSQL |
 | **Probe Agent** | Static Linux binary (→ Android APK optional) |
 | **Infrastructure** | Docker Compose, Uptime Kuma, Loki, GitHub Actions |
-| **UX / Frontend** | Figma (low-fi wireframes), React 19 + Vite 8, Tailwind CSS 3, React Router DOM 7, React-Leaflet + Leaflet (Esri tile layer for map), Axios (planned for API integration) |
+| **UX / Frontend** | Figma, React 19 + Vite 8, Tailwind CSS 3, React Router DOM 7, React-Leaflet + Leaflet (Esri tile layer for map), Axios (planned for API integration) |
 
 ---
 
