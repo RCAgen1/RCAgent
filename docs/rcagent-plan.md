@@ -33,8 +33,8 @@
 - Align with backend on incident log format and response schema; design DB schema (`news`, `events`, `incidents`, `candidate_logs`), write migrations and indexes; implement RSS ingestion for target cities and store raw news in DB; set up E5 embedding model, implement text-to-vector conversion and embedding persistence; define I/O schemas (Incident, Event, CandidateEvent, ReasoningResult) and create reasoning service skeleton.
 
 **UX / Frontend**
-- ✅ Create low-fidelity wireframes in Figma for all 4 core screens: Overview, Incident Detail, Probe Agents, News Feed.
-- ✅ Set up React + Vite project with Tailwind CSS and React Router; implement Sidebar, TopBar, and skeleton pages for all screens.
+- Create low-fidelity wireframes in Figma for all 4 core screens: Overview, Incident Detail, Probe Agents, News Feed.
+- Set up React + Vite project with Tailwind CSS and React Router; implement Sidebar, TopBar, and skeleton pages for all screens.
 
 ---
 
