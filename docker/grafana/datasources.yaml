@@ -1,0 +1,22 @@
+apiVersion: 1
+# Same Docker network as compose: service names mimir / loki.
+# Mimir datasource URL is .../prometheus; Prometheus remote_write still posts to http://mimir:9009/api/v1/push .
+
+datasources:
+  # Long-term metrics (Prometheus remote_write → Mimir; Explore / Grafana Alerting use PromQL).
+  - name: Mimir
+    uid: mimir
+    type: prometheus
+    url: http://mimir:9009/prometheus
+    access: proxy
+    isDefault: true
+    editable: true
+
+  # Logs (LogQL in Explore; Grafana-managed alerts on LogQL if you want).
+  - name: Loki
+    uid: loki
+    type: loki
+    url: http://loki:3100
+    access: proxy
+    isDefault: false
+    editable: true

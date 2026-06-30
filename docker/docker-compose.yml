@@ -1,33 +1,81 @@
 services:
-  frontend:
-    build:
-      context: ../frontend          # build context = папка frontend/
-      dockerfile: ../docker/Dockerfile.frontend
+  traefik:
+    image: docker.io/traefik:latest
+    container_name: traefik
+    restart: unless-stopped
+    networks:
+      - monitoring_edge
     ports:
-      - "3000:80"                   # хост:контейнер — сайт открывается на localhost:3000
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /stack/monitoring/traefik:/etc/traefik
+      - /run/docker.sock:/var/run/docker.sock:ro
+
+  mimir:
+    image: grafana/mimir:2.14.2
+    hostname: mimir
+    command: ["-config.file=/etc/mimir/mimir.yaml"]
+    volumes:
+      - ./mimir.yaml:/etc/mimir/mimir.yaml:ro
+      - mimir-data:/data
+    ports:
+      - "9009:9009"
+      - "9095:9095"
+    networks:
+      - monitoring_internal
+
+  loki:
+    image: grafana/loki:2.9.8
+    user: "0:0"
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+      - "9096:9096"
+    networks:
+      - monitoring_internal
+
+  grafana:
+    image: grafana/grafana:11.1.4
     depends_on:
-      - backend
-    networks:
-      - app-network
-
-  backend:
-    build:
-      context: ../backend           # build context = папка backend/
-      dockerfile: ../docker/Dockerfile.backend
+      - traefik
+      - mimir
+      - loki
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://${GRAFANA_DOMAIN}/}
+    volumes:
+      - ./grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+      - grafana-data:/var/lib/grafana
     ports:
-      - "8000:8000"                 # REST API бэкенда
+      - "127.0.0.1:3000:3000"
     networks:
-      - app-network
-
-  agents:
-    build:
-      context: ../agents            # build context = папка agents/
-      dockerfile: ../docker/Dockerfile.agents
-    ports:
-      - "8001:8001"                 # API ML-агентов
-    networks:
-      - app-network
+      monitoring_internal:
+      monitoring_edge:
+    labels:
+      traefik.enable: 'True'
+      traefik.docker.network: monitoring_stack_edge
+      traefik.http.routers.grafana.rule: Host("${GRAFANA_DOMAIN}")
+      traefik.http.routers.grafana.entrypoints: websecure
+      traefik.http.routers.grafana.tls: true
+      traefik.http.routers.grafana.tls.certresolver: prod
 
 networks:
-  app-network:
+  monitoring_internal:
+    name: monitoring_stack_internal
     driver: bridge
+  monitoring_edge:
+    name: monitoring_stack_edge
+    driver: bridge
+
+volumes:
+  mimir-data:
+  loki-data:
+  grafana-data:
+
+  
