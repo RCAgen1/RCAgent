@@ -9,11 +9,15 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      # traefik.yml, dynamics/, and acme.json live here.
-      # acme.json must exist and have mode 600 before first start:
-      #   touch ./traefik/acme.json && chmod 600 ./traefik/acme.json
       - ./traefik:/etc/traefik
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    # Create acme.json with correct permissions if it doesn't exist yet.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        touch /etc/traefik/acme.json && chmod 600 /etc/traefik/acme.json
+        exec traefik
 
   mimir:
     image: grafana/mimir:2.14.2
@@ -129,11 +133,11 @@ networks:
   monitoring_edge:
     name: monitoring_stack_edge
     driver: bridge
-  # Shared network with backend compose — Alloy scrapes app:8080 and postgres_exporter:9187.
-  # Create before first start: docker network create rcagent_shared
+  # Shared network owned by this compose — backend compose joins it as external.
+  # Start monitoring compose first, then backend.
   rcagent_shared:
-    external: true
     name: rcagent_shared
+    driver: bridge
 
 volumes:
   mimir-data:
