@@ -1,0 +1,100 @@
+// ============================================================
+// Server-side Alloy config
+// Collects: server node metrics, container metrics (cAdvisor),
+//           backend app metrics, Postgres metrics, Docker logs.
+// Pushes:   metrics → Mimir,  logs → Loki
+// ============================================================
+
+// ── Destinations ─────────────────────────────────────────────
+
+prometheus.remote_write "mimir" {
+  endpoint {
+    url = "http://mimir:9009/api/v1/push"
+  }
+}
+
+loki.write "loki" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+// ── Server node metrics ───────────────────────────────────────
+
+prometheus.exporter.unix "server" {
+  disable_collectors = ["mdadm", "nfs", "nfsd", "zfs"]
+}
+
+prometheus.scrape "server_node" {
+  targets         = prometheus.exporter.unix.server.targets
+  forward_to      = [prometheus.remote_write.mimir.receiver]
+  scrape_interval = "15s"
+  job_name        = "server_node"
+}
+
+// ── Container metrics (cAdvisor) ─────────────────────────────
+
+prometheus.scrape "cadvisor" {
+  targets = [{
+    __address__ = "cadvisor:8080",
+  }]
+  forward_to      = [prometheus.remote_write.mimir.receiver]
+  scrape_interval = "15s"
+  job_name        = "cadvisor"
+  metrics_path    = "/metrics"
+}
+
+// ── Backend app metrics ───────────────────────────────────────
+
+prometheus.scrape "backend_app" {
+  targets = [{
+    __address__ = "app:8080",
+  }]
+  forward_to      = [prometheus.remote_write.mimir.receiver]
+  scrape_interval = "15s"
+  job_name        = "backend"
+  metrics_path    = "/metrics"
+}
+
+// ── Postgres metrics ──────────────────────────────────────────
+
+prometheus.scrape "postgres_exporter" {
+  targets = [{
+    __address__ = "postgres_exporter:9187",
+  }]
+  forward_to      = [prometheus.remote_write.mimir.receiver]
+  scrape_interval = "15s"
+  job_name        = "postgres"
+  metrics_path    = "/metrics"
+}
+
+// ── Docker container logs → Loki ─────────────────────────────
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "docker_logs" {
+  targets = discovery.docker.containers.targets
+
+  // Use container name as the job label
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "job"
+    replacement   = "docker/$1"
+  }
+}
+
+loki.source.docker "docker_logs" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.relabel.docker_logs.output
+  forward_to    = [loki.write.loki.receiver]
+  relabeling_rules = discovery.relabel.docker_logs.rules
+}

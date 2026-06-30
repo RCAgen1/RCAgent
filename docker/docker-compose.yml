@@ -25,14 +25,20 @@ services:
     labels:
       traefik.enable: 'true'
       traefik.docker.network: monitoring_stack_edge
-      # Expose only the remote_write push endpoint externally
+      # Push endpoint for observer nodes (basicAuth)
       traefik.http.routers.mimir-push.rule: Host(`${MIMIR_DOMAIN}`) && PathPrefix(`/api/v1/push`)
       traefik.http.routers.mimir-push.entrypoints: websecure
       traefik.http.routers.mimir-push.tls: 'true'
       traefik.http.routers.mimir-push.tls.certresolver: prod
       traefik.http.routers.mimir-push.middlewares: mimir-auth@docker
       traefik.http.services.mimir-push.loadbalancer.server.port: '9009'
-      # basicAuth — password is set in .env as MIMIR_AUTH_USERS (htpasswd bcrypt format)
+      # Full read API for external Grafana / Explore access (basicAuth)
+      traefik.http.routers.mimir-read.rule: Host(`${MIMIR_DOMAIN}`) && !PathPrefix(`/api/v1/push`)
+      traefik.http.routers.mimir-read.entrypoints: websecure
+      traefik.http.routers.mimir-read.tls: 'true'
+      traefik.http.routers.mimir-read.tls.certresolver: prod
+      traefik.http.routers.mimir-read.middlewares: mimir-auth@docker
+      traefik.http.services.mimir-read.loadbalancer.server.port: '9009'
       traefik.http.middlewares.mimir-auth.basicauth.users: "${MIMIR_AUTH_USERS}"
 
   loki:
@@ -44,9 +50,19 @@ services:
       - loki-data:/loki
     ports:
       - "127.0.0.1:3100:3100"
-      - "127.0.0.1:9096:9096"
     networks:
-      - monitoring_internal
+      monitoring_internal:
+      monitoring_edge:
+    labels:
+      traefik.enable: 'true'
+      traefik.docker.network: monitoring_stack_edge
+      traefik.http.routers.loki.rule: Host(`${LOKI_DOMAIN}`)
+      traefik.http.routers.loki.entrypoints: websecure
+      traefik.http.routers.loki.tls: 'true'
+      traefik.http.routers.loki.tls.certresolver: prod
+      traefik.http.routers.loki.middlewares: loki-auth@docker
+      traefik.http.services.loki.loadbalancer.server.port: '3100'
+      traefik.http.middlewares.loki-auth.basicauth.users: "${LOKI_AUTH_USERS}"
 
   grafana:
     image: grafana/grafana:11.1.4
@@ -61,6 +77,8 @@ services:
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://${GRAFANA_DOMAIN}/}
     volumes:
       - ./grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+      - ./grafana/provisioning/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     ports:
       - "127.0.0.1:3000:3000"
@@ -75,6 +93,37 @@ services:
       traefik.http.routers.grafana.tls: true
       traefik.http.routers.grafana.tls.certresolver: prod
 
+  alloy:
+    image: grafana/alloy:latest
+    restart: unless-stopped
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy
+    networks:
+      monitoring_internal:
+      rcagent_shared:
+    environment:
+      POSTGRES_URL: "${ALLOY_POSTGRES_URL}"
+    command: >
+      run
+      --server.http.listen-addr=0.0.0.0:12345
+      --storage.path=/var/lib/alloy
+      /etc/alloy/config.alloy
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    restart: unless-stopped
+    privileged: true
+    networks:
+      - monitoring_internal
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+
 networks:
   monitoring_internal:
     name: monitoring_stack_internal
@@ -82,8 +131,14 @@ networks:
   monitoring_edge:
     name: monitoring_stack_edge
     driver: bridge
+  # Shared network with backend compose — Alloy uses it to scrape app:8080 and postgres_exporter:9187
+  # Create before starting: docker network create rcagent_shared
+  rcagent_shared:
+    external: true
+    name: rcagent_shared
 
 volumes:
   mimir-data:
   loki-data:
   grafana-data:
+  alloy-data:
