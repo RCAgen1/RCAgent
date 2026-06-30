@@ -9,15 +9,18 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - /stack/monitoring/traefik:/etc/traefik
-      - /run/docker.sock:/var/run/docker.sock:ro
+      # traefik.yml, dynamics/, and acme.json live here.
+      # acme.json must exist and have mode 600 before first start:
+      #   touch ./traefik/acme.json && chmod 600 ./traefik/acme.json
+      - ./traefik:/etc/traefik
+      - /var/run/docker.sock:/var/run/docker.sock:ro
 
   mimir:
     image: grafana/mimir:2.14.2
     hostname: mimir
     command: ["-config.file=/etc/mimir/mimir.yaml"]
     volumes:
-      - ./miimir.yaml:/etc/mimir/mimir.yaml:ro
+      - ./mimir.yaml:/etc/mimir/mimir.yaml:ro
       - mimir-data:/data
     networks:
       monitoring_internal:
@@ -25,21 +28,13 @@ services:
     labels:
       traefik.enable: 'true'
       traefik.docker.network: monitoring_stack_edge
-      # Push endpoint for observer nodes (basicAuth)
-      traefik.http.routers.mimir-push.rule: Host(`${MIMIR_DOMAIN}`) && PathPrefix(`/api/v1/push`)
-      traefik.http.routers.mimir-push.entrypoints: websecure
-      traefik.http.routers.mimir-push.tls: 'true'
-      traefik.http.routers.mimir-push.tls.certresolver: prod
-      traefik.http.routers.mimir-push.middlewares: mimir-auth@docker
-      traefik.http.services.mimir-push.loadbalancer.server.port: '9009'
-      # Full read API for external Grafana / Explore access (basicAuth)
-      traefik.http.routers.mimir-read.rule: Host(`${MIMIR_DOMAIN}`) && !PathPrefix(`/api/v1/push`)
-      traefik.http.routers.mimir-read.entrypoints: websecure
-      traefik.http.routers.mimir-read.tls: 'true'
-      traefik.http.routers.mimir-read.tls.certresolver: prod
-      traefik.http.routers.mimir-read.middlewares: mimir-auth@docker
-      traefik.http.services.mimir-read.loadbalancer.server.port: '9009'
-      traefik.http.middlewares.mimir-auth.basicauth.users: "${MIMIR_AUTH_USERS}"
+      # All Mimir traffic (push from nodes + read from external) goes through one router.
+      traefik.http.routers.mimir.rule: Host(`${MIMIR_DOMAIN}`)
+      traefik.http.routers.mimir.entrypoints: websecure
+      traefik.http.routers.mimir.tls: 'true'
+      traefik.http.routers.mimir.tls.certresolver: prod
+      traefik.http.routers.mimir.middlewares: mimir-auth@file
+      traefik.http.services.mimir.loadbalancer.server.port: '9009'
 
   loki:
     image: grafana/loki:2.9.8
@@ -60,9 +55,8 @@ services:
       traefik.http.routers.loki.entrypoints: websecure
       traefik.http.routers.loki.tls: 'true'
       traefik.http.routers.loki.tls.certresolver: prod
-      traefik.http.routers.loki.middlewares: loki-auth@docker
+      traefik.http.routers.loki.middlewares: loki-auth@file
       traefik.http.services.loki.loadbalancer.server.port: '3100'
-      traefik.http.middlewares.loki-auth.basicauth.users: "${LOKI_AUTH_USERS}"
 
   grafana:
     image: grafana/grafana:11.1.4
@@ -96,15 +90,19 @@ services:
   alloy:
     image: grafana/alloy:latest
     restart: unless-stopped
+    # pid: host + proc/sys mounts are required so prometheus.exporter.unix
+    # sees the real host metrics instead of the container-scoped values.
+    pid: host
     volumes:
       - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/rootfs:ro,rslave
       - alloy-data:/var/lib/alloy
     networks:
       monitoring_internal:
       rcagent_shared:
-    environment:
-      POSTGRES_URL: "${ALLOY_POSTGRES_URL}"
     command: >
       run
       --server.http.listen-addr=0.0.0.0:12345
@@ -131,8 +129,8 @@ networks:
   monitoring_edge:
     name: monitoring_stack_edge
     driver: bridge
-  # Shared network with backend compose — Alloy uses it to scrape app:8080 and postgres_exporter:9187
-  # Create before starting: docker network create rcagent_shared
+  # Shared network with backend compose — Alloy scrapes app:8080 and postgres_exporter:9187.
+  # Create before first start: docker network create rcagent_shared
   rcagent_shared:
     external: true
     name: rcagent_shared

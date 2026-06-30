@@ -1,0 +1,12 @@
+http:
+  middlewares:
+    # basicAuth for Mimir (nodes push + external read) and Loki (external read).
+    # Regenerate hash: docker run --rm httpd:alpine htpasswd -nbB nodes <new-token>
+    mimir-auth:
+      basicAuth:
+        users:
+          - "nodes:$2y$05$rGxFSljY/skwIf48bVfT4O1No6NZFoZnIISyLGpRTmTc.tw93p0JW"
+    loki-auth:
+      basicAuth:
+        users:
+          - "nodes:$2y$05$rGxFSljY/skwIf48bVfT4O1No6NZFoZnIISyLGpRTmTc.tw93p0JW"

@@ -20,8 +20,13 @@ loki.write "loki" {
 }
 
 // ── Server node metrics ───────────────────────────────────────
+// Reads from /host/proc and /host/sys which are bind-mounted from the real host.
+// The alloy container must run with pid: host and those volumes mounted.
 
 prometheus.exporter.unix "server" {
+  procfs_path        = "/host/proc"
+  sysfs_path         = "/host/sys"
+  rootfs_path        = "/host/rootfs"
   disable_collectors = ["mdadm", "nfs", "nfsd", "zfs"]
 }
 
@@ -74,10 +79,10 @@ discovery.docker "containers" {
   host = "unix:///var/run/docker.sock"
 }
 
-discovery.relabel "docker_logs" {
+// Apply human-readable labels before sending to Loki.
+discovery.relabel "docker_labels" {
   targets = discovery.docker.containers.targets
 
-  // Use container name as the job label
   rule {
     source_labels = ["__meta_docker_container_name"]
     regex         = "/(.*)"
@@ -93,8 +98,7 @@ discovery.relabel "docker_logs" {
 }
 
 loki.source.docker "docker_logs" {
-  host          = "unix:///var/run/docker.sock"
-  targets       = discovery.relabel.docker_logs.output
-  forward_to    = [loki.write.loki.receiver]
-  relabeling_rules = discovery.relabel.docker_logs.rules
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.docker_labels.output
+  forward_to = [loki.write.loki.receiver]
 }
