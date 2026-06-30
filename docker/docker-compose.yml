@@ -17,13 +17,23 @@ services:
     hostname: mimir
     command: ["-config.file=/etc/mimir/mimir.yaml"]
     volumes:
-      - ./mimir.yaml:/etc/mimir/mimir.yaml:ro
+      - ./miimir.yaml:/etc/mimir/mimir.yaml:ro
       - mimir-data:/data
-    ports:
-      - "9009:9009"
-      - "9095:9095"
     networks:
-      - monitoring_internal
+      monitoring_internal:
+      monitoring_edge:
+    labels:
+      traefik.enable: 'true'
+      traefik.docker.network: monitoring_stack_edge
+      # Expose only the remote_write push endpoint externally
+      traefik.http.routers.mimir-push.rule: Host(`${MIMIR_DOMAIN}`) && PathPrefix(`/api/v1/push`)
+      traefik.http.routers.mimir-push.entrypoints: websecure
+      traefik.http.routers.mimir-push.tls: 'true'
+      traefik.http.routers.mimir-push.tls.certresolver: prod
+      traefik.http.routers.mimir-push.middlewares: mimir-auth@docker
+      traefik.http.services.mimir-push.loadbalancer.server.port: '9009'
+      # basicAuth — password is set in .env as MIMIR_AUTH_USERS (htpasswd bcrypt format)
+      traefik.http.middlewares.mimir-auth.basicauth.users: "${MIMIR_AUTH_USERS}"
 
   loki:
     image: grafana/loki:2.9.8
@@ -33,8 +43,8 @@ services:
       - ./loki.yaml:/etc/loki/loki.yaml:ro
       - loki-data:/loki
     ports:
-      - "3100:3100"
-      - "9096:9096"
+      - "127.0.0.1:3100:3100"
+      - "127.0.0.1:9096:9096"
     networks:
       - monitoring_internal
 
@@ -60,7 +70,7 @@ services:
     labels:
       traefik.enable: 'True'
       traefik.docker.network: monitoring_stack_edge
-      traefik.http.routers.grafana.rule: Host("${GRAFANA_DOMAIN}")
+      traefik.http.routers.grafana.rule: Host(`${GRAFANA_DOMAIN}`)
       traefik.http.routers.grafana.entrypoints: websecure
       traefik.http.routers.grafana.tls: true
       traefik.http.routers.grafana.tls.certresolver: prod
@@ -77,5 +87,3 @@ volumes:
   mimir-data:
   loki-data:
   grafana-data:
-
-  
