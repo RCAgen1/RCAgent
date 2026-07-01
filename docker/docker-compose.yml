@@ -11,13 +11,6 @@ services:
     volumes:
       - ./traefik:/etc/traefik
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    # Create acme.json with correct permissions if it doesn't exist yet.
-    entrypoint:
-      - sh
-      - -c
-      - |
-        touch /etc/traefik/acme.json && chmod 600 /etc/traefik/acme.json
-        exec traefik
 
   mimir:
     image: grafana/mimir:2.14.2
