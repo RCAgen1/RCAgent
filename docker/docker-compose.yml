@@ -9,8 +9,8 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./traefik:/etc/traefik
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /stack/monitoring/traefik:/etc/traefik
+      - /run/docker.sock:/var/run/docker.sock:ro
 
   mimir:
     image: grafana/mimir:2.14.2
@@ -19,19 +19,11 @@ services:
     volumes:
       - ./mimir.yaml:/etc/mimir/mimir.yaml:ro
       - mimir-data:/data
+    ports:
+      - "9009:9009"
+      - "9095:9095"
     networks:
-      monitoring_internal:
-      monitoring_edge:
-    labels:
-      traefik.enable: 'true'
-      traefik.docker.network: monitoring_stack_edge
-      # All Mimir traffic (push from nodes + read from external) goes through one router.
-      traefik.http.routers.mimir.rule: Host(`${MIMIR_DOMAIN}`)
-      traefik.http.routers.mimir.entrypoints: websecure
-      traefik.http.routers.mimir.tls: 'true'
-      traefik.http.routers.mimir.tls.certresolver: prod
-      traefik.http.routers.mimir.middlewares: mimir-auth@file
-      traefik.http.services.mimir.loadbalancer.server.port: '9009'
+      - monitoring_internal
 
   loki:
     image: grafana/loki:2.9.8
@@ -41,19 +33,10 @@ services:
       - ./loki.yaml:/etc/loki/loki.yaml:ro
       - loki-data:/loki
     ports:
-      - "127.0.0.1:3100:3100"
+      - "3100:3100"
+      - "9096:9096"
     networks:
-      monitoring_internal:
-      monitoring_edge:
-    labels:
-      traefik.enable: 'true'
-      traefik.docker.network: monitoring_stack_edge
-      traefik.http.routers.loki.rule: Host(`${LOKI_DOMAIN}`)
-      traefik.http.routers.loki.entrypoints: websecure
-      traefik.http.routers.loki.tls: 'true'
-      traefik.http.routers.loki.tls.certresolver: prod
-      traefik.http.routers.loki.middlewares: loki-auth@file
-      traefik.http.services.loki.loadbalancer.server.port: '3100'
+      - monitoring_internal
 
   grafana:
     image: grafana/grafana:11.1.4
@@ -68,8 +51,6 @@ services:
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://${GRAFANA_DOMAIN}/}
     volumes:
       - ./grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
-      - ./grafana/provisioning/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     ports:
       - "127.0.0.1:3000:3000"
@@ -79,45 +60,10 @@ services:
     labels:
       traefik.enable: 'True'
       traefik.docker.network: monitoring_stack_edge
-      traefik.http.routers.grafana.rule: Host(`${GRAFANA_DOMAIN}`)
+      traefik.http.routers.grafana.rule: Host("${GRAFANA_DOMAIN}")
       traefik.http.routers.grafana.entrypoints: websecure
       traefik.http.routers.grafana.tls: true
       traefik.http.routers.grafana.tls.certresolver: prod
-
-  alloy:
-    image: grafana/alloy:latest
-    restart: unless-stopped
-    # pid: host + proc/sys mounts are required so prometheus.exporter.unix
-    # sees the real host metrics instead of the container-scoped values.
-    pid: host
-    volumes:
-      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/host/rootfs:ro,rslave
-      - alloy-data:/var/lib/alloy
-    networks:
-      monitoring_internal:
-      rcagent_shared:
-    command: >
-      run
-      --server.http.listen-addr=0.0.0.0:12345
-      --storage.path=/var/lib/alloy
-      /etc/alloy/config.alloy
-
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
-    restart: unless-stopped
-    privileged: true
-    networks:
-      - monitoring_internal
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker:/var/lib/docker:ro
-      - /dev/disk:/dev/disk:ro
 
 networks:
   monitoring_internal:
@@ -126,14 +72,10 @@ networks:
   monitoring_edge:
     name: monitoring_stack_edge
     driver: bridge
-  # Shared network owned by this compose — backend compose joins it as external.
-  # Start monitoring compose first, then backend.
-  rcagent_shared:
-    name: rcagent_shared
-    driver: bridge
 
 volumes:
   mimir-data:
   loki-data:
   grafana-data:
-  alloy-data:
+
+  
