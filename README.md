@@ -2,6 +2,27 @@
 
 Determines whether a service is unreachable due to a technical outage or censorship-based blocking, using distributed observers and AI agents.
 
+> **Track:** Industrial · **Team 62**, Innopolis University · **Live demo:** [http://161.104.53.210:3000](http://161.104.53.210:3000)
+
+---
+
+### Overview
+
+Conventional uptime monitors (e.g. Uptime Kuma) can only tell you *that* a service is down — a single global up/down flag per monitor. They cannot tell you **why**, and they cannot distinguish a real outage from region- or ISP-specific blocking.
+
+RCAgent closes that gap. Distributed observers probe each target from multiple Russian regions and ISPs, so one service can be reported `down` from Rostelecom yet `up` from MTS at the same time, tracked as two separate per-vantage incidents. When a target is unreachable, the backend first classifies the cause itself using a closed-vocabulary rule engine (block page, DNS tampering, SNI/DPI, TCP reset, TLS failure, HTTP error, throttling…). Definitive causes are self-resolved with full confidence; ambiguous cases are escalated to AI agents that cross-reference real-time logs with a continuously indexed knowledge base of provider news and block-list events, returning a structured root cause with a confidence score and supporting evidence.
+
+### Features
+
+- **Root-cause classification, not just up/down** — a 12-rule closed-vocabulary classifier derives the specific cause (DNS-block, IP-block, SNI/DPI, TLS/cert, HTTP 4xx/5xx, throttling, and more) with a confidence score.
+- **Self-classify vs. AI escalation** — the backend resolves definitive causes on its own and escalates only ambiguous/`unknown` cases to the AI agents, keeping cost and noise low.
+- **Per-vantage incidents** — outages are tracked per `(target, region, provider)`, so regional blocking is visible instead of being averaged away.
+- **AI verdicts with evidence** — an LLM-based Log Agent retrieves semantically similar provider-news events and returns a diagnosis with confidence and citations.
+- **Continuous knowledge base** — a Knowledge Agent + Scrapper index external feeds/news in the background for correlation with incidents.
+- **Multi-region distributed observers** — lightweight probes deployed across regions and ISPs, dispatched via Kafka.
+- **Auth for humans and agents** — JWT register/login for users; secret + public-key registration/refresh for observer agents.
+- **Alerting & dashboards** — Telegram/Slack alerts plus a Grafana (Alloy + Mimir + Loki) monitoring stack.
+
 ---
 
 ### Architecture
@@ -124,3 +145,96 @@ The Knowledge Agent runs continuously in the background, indexing external sourc
 | **Scrapper** | Fetches and filters content from external sources for the Knowledge Agent |
 | **Database** | Stores incidents, knowledge base, and backend configuration |
 | **Monitoring** | Grafana stack (Alloy + Mimir + Loki) for internal observability: server load, observer and agent availability, queue throughput, CPU/memory |
+
+---
+
+### Tech Stack
+
+| Layer | Technologies |
+|---|---|
+| **Backend** | Go (`net/http` + `gorilla/mux`), PostgreSQL (`pgx`), Kafka (`segmentio/kafka-go`), RabbitMQ (`amqp091-go`) |
+| **ML / AI Agents** | Python 3.11+, sentence-transformers (E5 — `intfloat/e5-base-v2`), FAISS, GLiNER, PyTorch, numpy, SQLAlchemy, `asyncpg` + `pgvector`, `feedparser`, `httpx`, `pika` (RabbitMQ), OpenAI-compatible LLM API (OpenAI / Deepseek / Ollama via `BaseLLMClient`) |
+| **Observers** | Static Linux binary (HTTP + ICMP probes) |
+| **Frontend** | React 19 + Vite, Tailwind CSS 3, React Router DOM 7, React-Leaflet + Leaflet (Esri tiles), Axios |
+| **Infrastructure** | Docker Compose, GitHub Actions (CI), Grafana + Alloy + Mimir + Loki |
+
+---
+
+### Setup
+
+All commands run from the **repository root** (`RCAgent/`). The only prerequisite is Docker with the Compose plugin.
+
+```bash
+# Clone the repository
+git clone https://github.com/RCAgen1/RCAgent.git
+cd RCAgent
+
+# Build and start all services (frontend + backend + agents) in the background
+docker compose -f docker/docker-compose.yml up --build -d
+
+# Follow logs
+docker compose -f docker/docker-compose.yml logs -f
+
+# Stop and remove containers
+docker compose -f docker/docker-compose.yml down
+```
+
+After startup:
+
+| Service | URL |
+|---|---|
+| Frontend | http://localhost:3000 |
+| Backend | http://localhost:8000 |
+| Agents | http://localhost:8001 |
+
+See [`docker/README.md`](docker/README.md) for running individual services, and the per-repo docs for configuration (`.env`) details.
+
+---
+
+### Deployment
+
+The feature-complete build is deployed on the project VM:
+
+- **Application (frontend):** [http://161.104.53.210:3000](http://161.104.53.210:3000)
+
+---
+
+### Results (current snapshot)
+
+The pipeline was run against real configured sources — 17 enabled sources producing 4723 raw news items, 4330 structured events (0 failed), and 1003 incidents. The metrics below come from **small curated verification sets** used as smoke checks and for threshold selection; they are not held-out production benchmarks.
+
+| Stage | Metric | Value | Scope / caveat |
+|---|---|---|---|
+| Extraction | event-type / provider accuracy, region recall | 1.000 | Curated verification set of **10 cases** |
+| Retrieval | recall@1 / @3 / @5 | 1.000 | **11 queries** — relevant item always in top-5 |
+| Retrieval | precision@5 (default) | 0.200 | ~1 relevant per 5 retrieved before thresholding |
+| Retrieval | precision / recall / f1 at `score_threshold = 0.75` | 1.000 / 1.000 / 1.000 | Best f1 in the threshold sweep, **tuned on the same 11-query set** (in-sample) |
+| Reasoning | cause accuracy | 1.000 | **4 deterministic mock-LLM smoke cases**; production-LLM quality **not yet measured** |
+
+The `0.75` threshold was selected from a sweep (precision rises from 0.611 at 0.30 to 1.000 at 0.75 while recall stays 1.000, then recall drops at 0.80+). Full threshold sweep, event-type distribution, and evaluation details are in [`agents/docs`](https://github.com/RCAgen1/agents/tree/main/docs) (`ml1.md`, `ml2.md`, `ml3.md`).
+
+---
+
+### Documentation
+
+- **API contract:** [`backend/docs/contracts/api.md`](https://github.com/RCAgen1/backend/blob/main/docs/contracts/api.md)
+- **Backend docs:** [`backend/docs`](https://github.com/RCAgen1/backend/tree/main/docs)
+- **ML docs:** [`agents/docs`](https://github.com/RCAgen1/agents/tree/main/docs) — `ml1.md` (extraction & validation), `ml2.md` (retrieval & thresholds), `ml3.md` (LLM evaluation)
+- **Blocking classification reference:** [`docs/blocking.ru.md`](docs/blocking.ru.md)
+- **Project plan:** [`docs/rcagent-plan.md`](docs/rcagent-plan.md)
+
+---
+
+### Team & Contributions
+
+**Team 62 — Industrial track**, Innopolis University.
+
+| Track | Member | Role & Contribution |
+|---|---|---|
+| **Frontend / Design** | Ilmira Usmanova | Team Leader, Frontend, Designer — UI, Figma design system, logo, reports |
+| **Backend / DevOps** | Egor Kazakov | Backend & DevOps — deployment of backend/frontend/observer to the VM, bug fixes across all three |
+| **Backend** | Grigorii Zhivolup | Full-stack integration — incident engine, per-vantage model, and AI-escalation flow wired end-to-end |
+| **Backend** | Alexei Bondarchuk | Testing & CI — unit tests (mockery / pgxmock / testify) and integration tests (testcontainers: Postgres + Kafka) |
+| **ML** | Georgii Pyanov | ML-1 — event extraction on real sources, reproducible verification script, pattern/alias fixes (power/provider outage, event-type priority, weather, RSS region fallback), `score_threshold = 0.75` selection, `docs/ml1.md` |
+| **ML** | Anna Tikhonova | ML-2 — end-to-end orchestration service, retrieval & pre-deployment layer, `docs/ml2.md` |
+| **ML** | Maria Karpova | ML-3 — LLM-judge evaluation pipeline, failure-case analysis, `docs/ml3.md` |
