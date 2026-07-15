@@ -13,6 +13,18 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - backend-db-net
+
+  # One-shot service: applies database migrations, then exits.
+  # migrate:
+  #   build: .
+  #   networks:
+  #     - backend-db-net
+  #   env_file:
+  #     - .env
+  #   entrypoint: ["sh", "-c", "goose -dir /app/migrations postgres \"$$DATABASE_URL\" up"]
+  #   restart: "no"
 
 volumes:
   postgres_data:
