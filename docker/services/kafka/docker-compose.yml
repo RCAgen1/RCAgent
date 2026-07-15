@@ -1,0 +1,63 @@
+services:
+  kafka:
+    image: redpandadata/redpanda:v24.2.7
+    restart: always
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      # internal: for clients inside backend-kafka-net (console, backend app).
+      # external: for clients outside Docker (host tools, remote observers).
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://kafka:9092,external://${KAFKA_ADVERTISED_HOST}:19092
+    env_file:
+      - .env
+    ports:
+      - "19092:19092"
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    networks:
+      - backend-kafka-net
+
+  # Web-панель брокера. Не публикует порт наружу напрямую — у неё в
+  # open-source версии нет логина вообще, поэтому доступ только через
+  # kafka-console-proxy (nginx + Basic Auth) ниже.
+  kafka-console:
+    image: redpandadata/console:v2.7.2
+    restart: always
+    volumes:
+      - ./redpanda-console.yaml:/etc/console/config.yaml:ro
+    environment:
+      CONFIG_FILEPATH: /etc/console/config.yaml
+    expose:
+      - "8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - backend-kafka-net
+
+  # nginx + HTTP Basic Auth перед kafka-console (аналог встроенного логина
+  # RabbitMQ Management UI, которого у Redpanda Console в OSS-версии нет).
+  kafka-console-proxy:
+    image: nginx:alpine
+    restart: always
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./.htpasswd:/etc/nginx/.htpasswd:ro
+    ports:
+      - "8081:80"
+    depends_on:
+      - kafka-console
+    networks:
+      - backend-kafka-net
+
+# docker network create backend-kafka-net
+
+networks:
+  backend-kafka-net:
+    external: true

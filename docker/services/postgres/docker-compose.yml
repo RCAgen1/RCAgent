@@ -1,8 +1,7 @@
-db:
+services:
+  db:
     image: postgres:17-alpine
     restart: always
-    networks:
-      - backend
     volumes:
       - postgres_data:/var/lib/postgresql/data
     env_file:
@@ -15,22 +14,11 @@ db:
       timeout: 5s
       retries: 5
 
-# One-shot service: applies database migrations, then exits.
-migrate:
-  build: .
-  networks:
-    - backend
-  env_file:
-    - .env
-  entrypoint: ["sh", "-c", "goose -dir /app/migrations postgres \"$$DATABASE_URL\" up"]
-  depends_on:
-    db:
-      condition: service_healthy
-  restart: "no"
-
 volumes:
   postgres_data:
 
+# docker network create backend-db-net
+
 networks:
-  backend:
-    driver: bridge
+  backend-db-net:
+    external: true
