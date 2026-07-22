@@ -1,0 +1,36 @@
+services:
+  # pgvector, не обычный postgres — нужен для эмбеддингов агентов (ml2_retrieval).
+  # Отдельная от бэкендовой БД: своя сеть, свой том, свои креды.
+  #
+  # Сервис назван "postgres-ml", а не "db": backend/app теперь тоже состоит в
+  # agents-db-net (для чтения новостей), а имя сервиса — это и есть базовый
+  # DNS-алиас в Docker Compose, отключить его нельзя, только дополнить. Если бы
+  # сервис назывался "db", на agents-db-net тоже появлялся бы алиас "db" —
+  # а на backend-db-net так уже называется настоящий бэкендовый Postgres.
+  # Для контейнера, состоящего в обеих сетях, имя "db" стало бы неоднозначным
+  # и могло бы резолвиться то в один Postgres, то в другой.
+  postgres-ml:
+    image: pgvector/pgvector:pg16
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - agents-db-net
+
+volumes:
+  postgres_data:
+
+# docker network create agents-db-net
+
+networks:
+  agents-db-net:
+    external: true
