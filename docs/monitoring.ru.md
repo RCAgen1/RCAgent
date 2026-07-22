@@ -86,7 +86,7 @@ graph TB
 1. **Scrape метрик** — опрашивает `/metrics` эндпоинты сервисов и пересылает в Mimir
 2. **Сбор логов** — читает stdout контейнеров через Docker socket и пересылает в Loki
 
-Конфигурируется файлом `docker/alloy/config.alloy` на языке River (синтаксис похож на HCL).
+Конфигурируется файлом `docker/services/monitoring/alloy/config.alloy` на языке River (синтаксис похож на HCL).
 
 Требует доступа к Docker socket (`/var/run/docker.sock`) для чтения логов контейнеров.
 
@@ -108,7 +108,7 @@ graph TB
 
 ### Grafana
 
-Дашборд. Подключается к Mimir и Loki как к datasource. Конфигурация datasource'ов задаётся через provisioning — файл `docker/grafana/datasources.yaml` монтируется при старте, ручная настройка через UI не нужна.
+Дашборд. Подключается к Mimir и Loki как к datasource. Конфигурация datasource'ов задаётся через provisioning — файл `docker/services/monitoring/grafana/datasources.yaml` монтируется при старте, ручная настройка через UI не нужна.
 
 Доступна через Traefik по домену из `GRAFANA_DOMAIN`.
 
@@ -117,26 +117,26 @@ graph TB
 Принимает входящий трафик, терминирует TLS (сертификаты Let's Encrypt через ACME httpChallenge) и проксирует запросы на Grafana.
 
 Конфигурация:
-- Статическая: `docker/traefik/traefik.yml`
-- Динамическая (роутеры, middleware): `docker/traefik/dynamics/`
+- Статическая: `docker/services/monitoring/traefik/traefik.yml` (в репозитории — справочная копия)
+- Динамическая (роутеры, middleware): **реально загружается с хоста**, `/stack/monitoring/traefik` (см. `volumes:` в `docker-compose.yml`) — не из репозитория
 - Сертификаты: `/etc/traefik/acme.json` (персистентный volume)
 
 ## Конфигурационные файлы
 
 ```
-docker/
+docker/services/monitoring/
 ├── docker-compose.yml          # весь стек мониторинга
-├── mimir.yaml                  # конфиг Mimir
+├── miimir.yaml                 # конфиг Mimir
 ├── loki.yaml                   # конфиг Loki
 ├── alloy/
 │   └── config.alloy            # что скрейпить и куда отправлять
 ├── grafana/
-│   ├── datasources.yaml        # provisioning datasource'ов
-│   └── dashboards/             # JSON-экспорты дашбордов
+│   └── datasources.yaml        # provisioning datasource'ов
 └── traefik/
-    ├── traefik.yml             # static config
+    ├── traefik.yml             # static config (справочная копия)
     └── dynamics/
-        └── routers.yml         # роутеры и middleware
+        └── routers.yml         # роутеры и middleware (справочная копия —
+                                 # реальный файл на хосте, см. выше)
 ```
 
 ## Переменные окружения
@@ -163,8 +163,9 @@ Alloy будет опрашивать этот эндпоинт. Адрес се
 ## Запуск
 
 ```bash
-cd docker
-GRAFANA_DOMAIN=grafana.example.com docker compose up -d
+cd docker/services/monitoring
+cp .env.example .env   # GRAFANA_DOMAIN, MIMIR_DOMAIN, LOKI_DOMAIN, MIMIR_PUSH_TOKEN
+docker compose up -d
 ```
 
 Grafana будет доступна на `https://grafana.example.com` после получения TLS-сертификата.

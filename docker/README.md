@@ -1,83 +1,30 @@
-# Docker
+# docker/
 
-Все команды выполняются из **корня репозитория** (`RCAgent/`).
+Shared infrastructure services — each is its own Compose project, on its
+own `external` Docker network, independent of `backend`/`frontend`/`agents`.
+See **[docs/deployment.md](../docs/deployment.md)** for the full deployment
+order, required networks, and how these connect to the rest of the project.
 
 ```
 docker/
-├── Dockerfile.frontend   — Vite + React → nginx (порт 80)
-├── Dockerfile.backend    — Python FastAPI (порт 8000)
-├── Dockerfile.agents     — Python ML-агенты (порт 8001)
-├── docker-compose.yml    — поднимает все три сервиса
-└── README.md
+└── services/
+    ├── postgres/     — Postgres for the backend (`rcagent` database)
+    ├── postgres-ml/  — Postgres/pgvector for agents (`incident_ml` database)
+    ├── kafka/        — Redpanda (job/result topics) + web console
+    ├── rabbitmq/     — RabbitMQ (AI-agent escalation queue)
+    └── monitoring/   — Grafana + Mimir + Loki behind Traefik (optional)
 ```
 
----
-
-## Запуск всех сервисов сразу
+There is no single `docker-compose.yml` that starts everything — each
+service is brought up independently:
 
 ```bash
-# Собрать образы и запустить в фоне
-docker compose -f docker/docker-compose.yml up --build -d
-
-# Посмотреть логи всех сервисов
-docker compose -f docker/docker-compose.yml logs -f
-
-# Остановить и удалить контейнеры
-docker compose -f docker/docker-compose.yml down
+cd docker/services/<name>
+cp .env.example .env   # fill in real credentials
+docker compose up -d
 ```
 
-После запуска:
-| Сервис   | URL                   |
-|----------|-----------------------|
-| Frontend | http://localhost:3000 |
-| Backend  | http://localhost:8000 |
-| Agents   | http://localhost:8001 |
-
----
-
-## Запуск отдельного сервиса
-
-### Frontend
-
-```bash
-docker build -f docker/Dockerfile.frontend -t rcagent-frontend ./frontend
-docker run -p 3000:80 rcagent-frontend
-```
-
-### Backend
-
-```bash
-docker build -f docker/Dockerfile.backend -t rcagent-backend ./backend
-docker run -p 8000:8000 rcagent-backend
-```
-
-### Agents
-
-```bash
-# Создать volume для кеша моделей (один раз)
-docker volume create models_cache
-
-docker build -f docker/Dockerfile.agents -t rcagent-agents ./agents
-docker run -p 8001:8001 -v models_cache:/root/.cache/huggingface rcagent-agents
-```
-
-> Volume `models_cache` нужен чтобы sentence-transformers не скачивал модели (~400 MB)
-> заново при каждом `docker run`.
-
----
-
-## Полезные команды
-
-```bash
-# Пересобрать конкретный сервис без кеша
-docker compose -f docker/docker-compose.yml build --no-cache agents
-
-# Зайти в запущенный контейнер
-docker compose -f docker/docker-compose.yml exec frontend sh
-
-# Посмотреть логи только одного сервиса
-docker compose -f docker/docker-compose.yml logs -f backend
-
-# Удалить все остановленные контейнеры и неиспользуемые образы
-docker system prune
-```
+`backend`, `frontend` and `agents` each have their own `docker-compose.yaml`/
+`.yml` in their own repo, and join whichever of these services' networks
+they need (see [docs/deployment.md](../docs/deployment.md#1-create-the-shared-docker-networks)
+for the exact network names and why there are several instead of one).

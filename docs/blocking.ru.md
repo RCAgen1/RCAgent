@@ -353,6 +353,15 @@
 
 ### 3.7 Итоговая структура данных от обсервера
 
+Ниже — концептуальный набросок (не выверялся построчно против кода). За
+проверенным, актуальным на каждое поле JSON-примером и таблицей "какое поле
+чем реально заполняется" — [`linux_binary/README.md`, разделы "Probe result
+format" и "Field reference"](https://github.com/RCAgen1/linux_binary/blob/main/README.md#probe-result-format).
+Основные отличия реального формата от наброска ниже: `dns.*.addrs` (не
+`answers`), `isp_returns_block_ip` (не `_block_page`), четыре DNS-резолвера
+включая Quad9, `traceroute.hops` — массив хопов (не число), нет
+`last_hop_asn`, `throttle_ratio` (не `throttling_ratio`).
+
 ```json
 {
   "target_url": "https://example.com",

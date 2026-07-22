@@ -11,6 +11,7 @@ services:
   # и могло бы резолвиться то в один Postgres, то в другой.
   postgres-ml:
     image: pgvector/pgvector:pg16
+    container_name: postgres-ml
     restart: always
     env_file:
       - .env
